@@ -1,6 +1,7 @@
 // Copyright (c) 2017 Franka Emika GmbH
 // Use of this source code is governed by the Apache-2.0 license, see LICENSE
 #include <array>
+#include <string>
 #include <cmath>
 #include <functional>
 #include <iostream>
@@ -37,13 +38,8 @@ int main(int argc, char** argv) {
   std::string robot_ip = argv[1];
 
   // start redis client
-  CDatabaseRedisClient redis_client;
-  HiredisServerInfo info;
-  info.hostname_ = "127.0.0.1";
-  info.port_ = 6379;
-  info.timeout_ = { 1, 500000 }; // 1.5 seconds
-  redis_client = CDatabaseRedisClient();
-  redis_client.serverIs(info);
+  RedisClient redis_client;
+  redis_client.connect("localhost", 6379);
 
   // set up signal handler
   signal(SIGABRT, &sighandler);
@@ -55,8 +51,8 @@ int main(int argc, char** argv) {
   double gripper_desired_speed, gripper_desired_speed_tmp;
   double gripper_desired_force, gripper_desired_force_tmp;
   double gripper_max_width;
-  string gripper_mode = "m";
-  string gripper_mode_tmp;
+  std::string gripper_mode = "m";
+  std::string gripper_mode_tmp;
 
   bool flag_command_changed = false;
 
@@ -69,8 +65,8 @@ int main(int argc, char** argv) {
 
     franka::GripperState gripper_state = gripper.readOnce();
     gripper_max_width = gripper_state.max_width;
-    redis_client.setCommandIs(GRIPPER_MAX_WIDTH_KEY, std::to_string(gripper_max_width));
-    redis_client.setCommandIs(GRIPPER_MODE_KEY, gripper_mode);
+    redis_client.set(GRIPPER_MAX_WIDTH_KEY, std::to_string(gripper_max_width));
+    redis_client.set(GRIPPER_MODE_KEY, gripper_mode);
 
     // gripper_desired_width = 0.5*gripper_max_width;
     gripper_desired_width = gripper_state.width;
@@ -78,43 +74,49 @@ int main(int argc, char** argv) {
     gripper_desired_force = 0.0;
     gripper.move(gripper_desired_width, gripper_desired_speed);
 
-    redis_client.setCommandIs(GRIPPER_DESIRED_WIDTH_KEY, std::to_string(gripper_desired_width));
-    redis_client.setCommandIs(GRIPPER_DESIRED_SPEED_KEY, std::to_string(gripper_desired_speed));
-    redis_client.setCommandIs(GRIPPER_DESIRED_FORCE_KEY, std::to_string(gripper_desired_force));
+    redis_client.set(GRIPPER_DESIRED_WIDTH_KEY, std::to_string(gripper_desired_width));
+    redis_client.set(GRIPPER_DESIRED_SPEED_KEY, std::to_string(gripper_desired_speed));
+    redis_client.set(GRIPPER_DESIRED_FORCE_KEY, std::to_string(gripper_desired_force));
 
     runloop = true;
     while(runloop)
     {
       gripper_state = gripper.readOnce();
-      redis_client.setCommandIs(GRIPPER_CURRENT_WIDTH_KEY, std::to_string(gripper_state.width));
+      redis_client.set(GRIPPER_CURRENT_WIDTH_KEY, std::to_string(gripper_state.width));
 
-      redis_client.getCommandIs(GRIPPER_DESIRED_WIDTH_KEY, gripper_desired_width_tmp);
-      redis_client.getCommandIs(GRIPPER_DESIRED_SPEED_KEY, gripper_desired_speed_tmp);
-      redis_client.getCommandIs(GRIPPER_DESIRED_FORCE_KEY, gripper_desired_force_tmp);
-      redis_client.getCommandIs(GRIPPER_MODE_KEY, gripper_mode_tmp);
+      std::vector<std::string> get_keys;
+      get_keys.push_back(GRIPPER_DESIRED_WIDTH_KEY);
+      get_keys.push_back(GRIPPER_DESIRED_SPEED_KEY);
+      get_keys.push_back(GRIPPER_DESIRED_FORCE_KEY);
+      get_keys.push_back(GRIPPER_MODE_KEY);
+      std::vector<std::string> replies = redis_client.mget(get_keys);
+      gripper_desired_width_tmp = atof(replies[0].c_str());
+      gripper_desired_speed_tmp = atof(replies[1].c_str());
+      gripper_desired_force_tmp = atof(replies[2].c_str());
+      gripper_mode_tmp = replies[3];
 
       if(gripper_desired_width_tmp > gripper_max_width)
       {
         gripper_desired_width_tmp = gripper_max_width;
-        redis_client.setCommandIs(GRIPPER_DESIRED_WIDTH_KEY, std::to_string(gripper_max_width));
+        redis_client.set(GRIPPER_DESIRED_WIDTH_KEY, std::to_string(gripper_max_width));
         std::cout << "WARNING : Desired gripper width higher than max width. saturating to max width\n" << std::endl;
       }
       if(gripper_desired_width_tmp < 0)
       {
         gripper_desired_width_tmp = 0;
-        redis_client.setCommandIs(GRIPPER_DESIRED_WIDTH_KEY, std::to_string(0));
+        redis_client.set(GRIPPER_DESIRED_WIDTH_KEY, std::to_string(0));
         std::cout << "WARNING : Desired gripper width lower than 0. saturating to max 0\n" << std::endl;
       }
       if(gripper_desired_speed_tmp < 0)
       {
         gripper_desired_speed_tmp = 0;
-        redis_client.setCommandIs(GRIPPER_DESIRED_SPEED_KEY, std::to_string(0));
+        redis_client.set(GRIPPER_DESIRED_SPEED_KEY, std::to_string(0));
         std::cout << "WARNING : Desired gripper speed lower than 0. saturating to max 0\n" << std::endl;
       }
       if(gripper_desired_force_tmp < 0)
       {
         gripper_desired_force_tmp = 0;
-        redis_client.setCommandIs(GRIPPER_DESIRED_FORCE_KEY, std::to_string(0));
+        redis_client.set(GRIPPER_DESIRED_FORCE_KEY, std::to_string(0));
         std::cout << "WARNING : Desired gripper speed lower than 0. saturating to max 0\n" << std::endl;
       }
 
@@ -132,22 +134,24 @@ int main(int argc, char** argv) {
 
       if(flag_command_changed)
       {
-        redis_client.setCommandIs(GRIPPER_COMMAND_FINISH_FLAG_KEY, "false");
+        redis_client.set(GRIPPER_COMMAND_FINISH_FLAG_KEY, "false");
         if(gripper_mode == "m")
         {
+          std::cout << "moving" << std::endl;
           gripper.move(gripper_desired_width, gripper_desired_speed);
         }
         else if(gripper_mode == "g")
         {
+          std::cout << "grasping" << gripper_desired_width << ":" << gripper_desired_speed << ":" << gripper_desired_force << std::endl;
           gripper.grasp(gripper_desired_width, gripper_desired_speed, gripper_desired_force,
                         0.05, 0.05);
         }
         else
         {
-          std::cout << "WARNING : gripper mode not regognized. Use g for grasp and m for move\n"<< std::endl;
+          std::cout << "WARNING : gripper mode not recognized. Use g for grasp and m for move\n"<< std::endl;
         }
         flag_command_changed = false;
-        redis_client.setCommandIs(GRIPPER_COMMAND_FINISH_FLAG_KEY, "true");
+        redis_client.set(GRIPPER_COMMAND_FINISH_FLAG_KEY, "true");
       }
 
       // if(counter % 500 == 0)

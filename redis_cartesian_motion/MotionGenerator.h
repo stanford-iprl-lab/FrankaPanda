@@ -72,6 +72,6 @@ class MotionGenerator {
   double time_ = 0.0;
 
   Vector2d dq_max_ = (Vector2d() << 0.1, 0.4).finished(); // 0.2m/s, 1.0rad/s
-  Vector2d ddq_max_start_ = (Vector2d() << 0.5, 1).finished();
-  Vector2d ddq_max_goal_ = (Vector2d() << 0.5, 1).finished();
+  Vector2d ddq_max_start_ = (Vector2d() << 0.2, 0.5).finished();
+  Vector2d ddq_max_goal_ = (Vector2d() << 0.2, 0.5).finished();
 };

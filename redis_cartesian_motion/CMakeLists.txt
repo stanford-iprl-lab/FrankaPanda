@@ -14,11 +14,13 @@ set(SOURCES
     main.cpp
     MotionGenerator.h
     MotionGenerator.cpp
+    RedisClient.h
+    RedisClient.cpp
 )
 
 # Create a library
 add_executable(${PROJECT_NAME} ${SOURCES})
-add_executable(gripper_driver gripper.cpp)
+add_executable(gripper_driver gripper.cpp RedisClient.h RedisClient.cpp)
 
 # LIBFRANKA
 find_package(Franka REQUIRED PATHS ${PROJECT_SOURCE_DIR}/../../libfranka/build)

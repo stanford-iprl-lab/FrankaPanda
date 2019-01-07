@@ -41,14 +41,14 @@ std::string time_point_to_string(std::chrono::system_clock::time_point &tp)
 
   std::strftime(time_str, strlen(time_str), date_time_format, ttm);
 
-  string result(time_str);
+  std::string result(time_str);
   result.append(".");
   result.append(std::to_string(ms.count()));
 
   return result;
 }
 
-void debug_function(CDatabaseRedisClient &redis_client)
+void debug_function(RedisClient &redis_client)
 {
   std::array<double, 16> ee_pose_cmd_array{};
   std::array<double, 16> ee_pose_sensed_array{};
@@ -118,13 +118,8 @@ int main(int argc, char** argv) {
   std::string robot_ip = argv[1];
 
   // start redis client
-  CDatabaseRedisClient redis_client;
-  HiredisServerInfo info;
-  info.hostname_ = "127.0.0.1";
-  info.port_ = 6379;
-  info.timeout_ = { 1, 500000 }; // 1.5 seconds
-  redis_client = CDatabaseRedisClient();
-  redis_client.serverIs(info);
+  RedisClient redis_client;
+  redis_client.connect("localhost", 6379);
 
 //  debug_function(redis_client);
 //  return 0;
@@ -132,20 +127,28 @@ int main(int argc, char** argv) {
   std::array<double, 16> ee_pose_cmd_array{};
   std::array<double, 16> ee_pose_sensed_array{};
   std::array<double, 7> q_array{};
+  std::string ee_pose_cmd_array_str;
+  std::string ee_pose_sensed_array_str;
   std::string previous_command_time;
   std::string current_command_time;
   std::string command_type;
+  std::vector<std::string> request_keys;
+  std::vector<std::string> replies;
+  request_keys.push_back(COMMAND_TIMESTAMP_KEY);
+  request_keys.push_back(EE_POSE_COMMANDED_KEY);
+  request_keys.push_back(EE_POSE_COMMANDED_TYPE_KEY);
 
   auto timestamp = std::chrono::system_clock::now();
   std::string timestamp_s = time_point_to_string(timestamp);
 
-
-  redis_client.setDoubleArray(EE_POSE_COMMANDED_KEY, ee_pose_cmd_array, 16);
-  redis_client.setCommandIs(COMMAND_TIMESTAMP_KEY, timestamp_s);
+  redis_client.hDoubleArraytoStringJSON(ee_pose_cmd_array, 16, ee_pose_cmd_array_str);
+  redis_client.set(EE_POSE_COMMANDED_KEY, ee_pose_cmd_array_str);
+  redis_client.set(COMMAND_TIMESTAMP_KEY, timestamp_s);
   // Safety to detect if controller is already running : wait 50 milliseconds
   usleep(50000);
-  redis_client.getDoubleArray(EE_POSE_COMMANDED_KEY, ee_pose_cmd_array, 16);
-  redis_client.getCommandIs(COMMAND_TIMESTAMP_KEY, previous_command_time);
+  ee_pose_cmd_array_str = redis_client.get(EE_POSE_COMMANDED_KEY);
+  previous_command_time = redis_client.get(COMMAND_TIMESTAMP_KEY);
+  redis_client.hDoubleArrayfromStringJSON(ee_pose_cmd_array, 16, ee_pose_cmd_array_str);
 
   for(int i=0; i<16; i++)
   {
@@ -155,7 +158,6 @@ int main(int argc, char** argv) {
       return -1;
     }
   }
-
   if (previous_command_time != timestamp_s) {
     std::cout << "Stop the controller before runnung the driver\n" << std::endl;
     return -1;
@@ -188,9 +190,10 @@ int main(int argc, char** argv) {
     franka::RobotState robot_state;
 
     while (true) {
-      redis_client.getCommandIs(COMMAND_TIMESTAMP_KEY, current_command_time);
-      redis_client.getDoubleArray(EE_POSE_COMMANDED_KEY, ee_pose_cmd_array, 16);
-      redis_client.getCommandIs(EE_POSE_COMMANDED_TYPE_KEY, command_type);
+      replies = redis_client.mget(request_keys);
+      current_command_time = replies[0];
+      redis_client.hDoubleArrayfromStringJSON(ee_pose_cmd_array, 16, replies[1]);
+      command_type = replies[2];
       if (current_command_time == previous_command_time) std::this_thread::sleep_for(std::chrono::milliseconds(5));
       else {
         previous_command_time = current_command_time;
@@ -210,13 +213,14 @@ int main(int argc, char** argv) {
         std::cout << std::endl;
 
         MotionGenerator motion_generator(1.0, ee_pose_cmd_array);
-        robot.control(motion_generator);
+        robot.control(motion_generator, franka::ControllerMode::kCartesianImpedance);
         std::cout << "Finished moving to desired pose" << std::endl;
         robot_state = robot.readOnce();
         ee_pose_sensed_array = robot_state.O_T_EE_c;
         //ee_pose_sensed_array = ee_pose_cmd_array;
-        redis_client.setDoubleArray(EE_POSE_KEY, ee_pose_sensed_array, 16);
-        redis_client.setCommandIs(COMMAND_FINISH_FLAG_KEY, "true");
+        redis_client.hDoubleArraytoStringJSON(ee_pose_sensed_array, 16, ee_pose_sensed_array_str);
+        redis_client.set(EE_POSE_KEY, ee_pose_sensed_array_str);
+        redis_client.set(COMMAND_FINISH_FLAG_KEY, "true");
       }
     }
 
