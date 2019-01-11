@@ -1,8 +1,6 @@
 #pragma once
 
 #include <array>
-#include <vector>
-#include <fstream>
 #include <Eigen/Core>
 
 #include <franka/control_types.h>
@@ -23,7 +21,7 @@ void setDefaultBehavior(franka::Robot& robot);
  * (Kogan Page Science Paper edition).
  */
 class MotionGenerator {
- public:
+  public:
 
   /**
    * Creates a new MotionGenerator instance.
@@ -48,14 +46,7 @@ class MotionGenerator {
    */
   franka::CartesianPose operator()(const franka::RobotState& robot_state, franka::Duration period);
 
-  /**
-   * Logs received dq_d, ddq_d and time from robot_state at every call
-   *
-   * @param[in] out Ofstream object to log into.
-   */
-  void logToFile(std::ofstream& out);
-
- private:
+  private:
   using Vector3d = Eigen::Matrix<double, 3, 1, Eigen::ColMajor>;
   using Vector2d = Eigen::Matrix<double, 2, 1, Eigen::ColMajor>;
   using Matrix4x4d = Eigen::Matrix<double, 4, 4, Eigen::ColMajor>;
@@ -84,11 +75,6 @@ class MotionGenerator {
   Vector2d q_1_;
 
   double time_ = 0.0;
-
-  // for trouble shooting
-  std::vector<std::array<double, 7>> dq_d_history;
-  std::vector<std::array<double, 7>> ddq_d_history;
-  std::vector<uint64_t> t_history;
 
   const Vector2d default_dq_max_ = (Vector2d() << 0.1, 0.4).finished(); // 0.2m/s, 1.0rad/s
   const Vector2d default_ddq_max_start_ = (Vector2d() << 0.2, 0.5).finished();

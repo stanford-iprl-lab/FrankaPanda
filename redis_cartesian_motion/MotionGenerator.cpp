@@ -53,9 +53,6 @@ void MotionGenerator::reset(double speed_factor, const std::array<double, 16> po
   t_f_sync_.setZero();
   q_1_.setZero();
   time_ = 0;
-  dq_d_history.clear();
-  ddq_d_history.clear();
-  t_history.clear();
 }
 
 bool MotionGenerator::calculateDesiredValues(double t, Vector2d* delta_q_d) const {
@@ -179,13 +176,6 @@ franka::CartesianPose MotionGenerator::operator()(const franka::RobotState& robo
     preCalculateRotationMatrices();
   }
 
-  // saving robot state dq_d, ddq_d, time for trouble shooting.
-  //dq_d_history.push_back(robot_state.dq_d);
-  //ddq_d_history.push_back(robot_state.ddq_d);
-  //t_history.push_back(robot_state.time.toMSec());
-  //for (int j =0; j<7; j++) std::cout << robot_state.dq_d[j] << " ";
-  //for (int j =0; j<7; j++) std::cout << robot_state.ddq_d[j] << " ";
-  //std::cout << t_history.size() << std::endl;
   Vector2d delta_q_d;
   bool motion_finished = calculateDesiredValues(time_, &delta_q_d);
 
@@ -206,22 +196,4 @@ franka::CartesianPose MotionGenerator::operator()(const franka::RobotState& robo
   franka::CartesianPose output(command_pose);
   output.motion_finished = motion_finished;
   return output;
-}
-
-void MotionGenerator::logToFile(std::ofstream& out) {
-  std::array<double, 7> dq_d;
-  std::array<double, 7> ddq_d;
-  uint64_t t;
-  std::cout << t_history.size() << std::endl;
-  for (int i=0; i<t_history.size(); i++) {
-    dq_d = dq_d_history[i];
-    ddq_d = ddq_d_history[i];
-    t = t_history[i];
-    out << t << " : ";
-    for (int j=0; j<7; j++) out << dq_d[j] << " ";
-    out << ": ";
-    for (int j=0; j<7; j++) out << ddq_d[j] << " ";
-    out << ";\n";
-  }
-  return;
 }

@@ -58,7 +58,7 @@ set(franka_panda_redis_driver_LIBRARIES
     -lrt
 )
 
-include_directories( ${franka_panda_redis_driver_INCLUDE_DIRS} )
+include_directories(SYSTEM ${franka_panda_redis_driver_INCLUDE_DIRS} )
 target_link_libraries(${PROJECT_NAME} ${franka_panda_redis_driver_LIBRARIES})
 target_link_libraries(gripper_driver ${franka_panda_redis_driver_LIBRARIES})
 

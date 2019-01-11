@@ -4,7 +4,6 @@
 #include <cmath>
 #include <functional>
 #include <iostream>
-#include <fstream>
 #include <chrono>
 #include <thread>
 #include <Eigen/Core>
@@ -123,6 +122,7 @@ int main(int argc, char** argv) {
   RedisClient redis_client;
   redis_client.connect("localhost", 6379);
   MotionGenerator motion_generator;
+
 //  debug_function(redis_client);
 //  return 0;
 
@@ -191,6 +191,7 @@ int main(int argc, char** argv) {
 
 
     franka::RobotState robot_state;
+
     while (true) {
       replies = redis_client.mget(request_keys);
       current_command_time = replies[0];
@@ -214,7 +215,6 @@ int main(int argc, char** argv) {
         for (int i=0; i<16; i++) std::cout << ee_pose_cmd_array[i] << "  ";
         std::cout << std::endl;
 
-//        MotionGenerator motion_generator(1.0, ee_pose_cmd_array);
         motion_generator.reset(1.0, ee_pose_cmd_array);
         robot.control(motion_generator, franka::ControllerMode::kCartesianImpedance);
         std::cout << "Finished moving to desired pose" << std::endl;
@@ -230,10 +230,6 @@ int main(int argc, char** argv) {
   } catch (const std::exception& ex) {
     // print exception
     std::cout << ex.what() << std::endl;
-    std::ofstream out("motionlog.txt", std::ofstream::out);
-    motion_generator.logToFile(out);
-    out << "print finished" << std::endl;
-    out.close();
     std::cout << "counter : " << counter << std::endl;
   }
 
